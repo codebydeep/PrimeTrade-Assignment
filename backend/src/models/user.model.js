@@ -1,45 +1,100 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { AvailableUserRoles, UserRolesEnum } from "../utils/constants.js";
 
 const userSchema = new mongoose.Schema(
   {
     fullname: {
-        type: String,
-        required: true
+      type: String,
+      required: true,
     },
     email: {
-        type: String,
-        required: true,
-        lowercase: true,
-        trim: true,
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
     },
     password: {
-        type: String,
-        required: true,
-        minLength: 6,
+      type: String,
+      required: true,
+      minLength: 6,
     },
     refreshToken: {
-        type: String
-    }, 
-    role :{
-        type: String,
-        enum: AvailableUserRoles,
-        default: UserRolesEnum.USER
+      type: String,
+    },
+    role: {
+      type: String,
+      enum: AvailableUserRoles,
+      default: UserRolesEnum.USER,
     },
     isEmailVerified: {
-        type: Boolean,
-        default: false,
+      type: Boolean,
+      default: false,
     },
     emailVerificationToken: {
-        type: String,
-    }, emailVerificationTokenExpiry: {
-      type: Date,  
-    }
+      type: String,
+    },
+    emailVerificationTokenExpiry: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) {
+    return next();
+  }
+
+  this.password = await bcrypt.hash(this.password, 10);
+  next();
+});
+
+userSchema.methods.isPasswordMatched = async function (password) {
+  return bcrypt.compare(password, this.password);
+};
+
+userSchema.methods.generateRefreshToken = function () {
+  return jwt.sign(
+    {
+      id: this._id,
+      role: this.role,
+    },
+    process.env.REFRESH_TOKEN_SECRET,
+    {
+      expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+    }
+  );
+};
+
+userSchema.methods.generateAccessToken = function () {
+  return jwt.sign(
+    {
+      id: this._id,
+      role: this.role,
+    },
+    process.env.ACCESS_TOKEN_SECRET,
+    {
+      expiresIn: process.env.ACCESS_TOKEN_EXPIRY
+    }
+  );
+};
+
+userSchema.methods.generateEmailVerificationToken = function () {
+    return jwt.sign(
+    { 
+      id: this._id,
+      role: this.role,
+    },
+    process.env.EMAIL_VERIFICATION_TOKEN_SECRET,    
+    {
+      expiresIn: process.env.EMAIL_VERIFICATION_TOKEN_EXPIRY      
+    }
+  )
+}
 
 const User = mongoose.model("User", userSchema);
 
